@@ -253,15 +253,16 @@ function BookingForm({ onSubmit }) {
         <div style={{borderTop:'1px solid #1e1e1e',paddingTop:20,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16}}>
           <div>
             <div style={{fontSize:11,color:'#888',fontFamily:'DM Mono, monospace',letterSpacing:'0.06em',textTransform:'uppercase'}}>Estimated Total</div>
-            {price ? (
+            {(price != null) ? (
               <>
                 <div style={{fontSize:28,fontWeight:700,color:'#C8A96E',marginTop:2}}>
-                  {price.same ? `£${price.min.toLocaleString()}` : `£${price.min.toLocaleString()}–£${price.max.toLocaleString()}`}
+                  {'£'+Number(price).toLocaleString()}
+                  {form.offPeak && <span style={{fontSize:14,color:'#888',marginLeft:8,textDecoration:'line-through'}}>{'£'+Math.round(Number(price)/0.85).toLocaleString()}</span>}
                 </div>
                 <div style={{fontSize:11,color:'#666',marginTop:2}}>
-                  {form.hours}hr{form.hours>1?'s':''} · {hireTypes.find(h=>h.id===form.hireType)?.label}
-                  {form.offPeak?' · off-peak rate':''}
-                  {form.addons.length>0?` · ${form.addons.length} add-on${form.addons.length>1?'s':''}`:''}
+                  {form.room==='both' ? 'full day rate' : form.hours+'hr'+(form.hours>1?'s':'')} · {hireTypes.find(h=>h.id===form.hireType)?.label}
+                  {form.offPeak ? ' · 15% off-peak discount' : ''}
+                  {form.addons.length>0 ? ' · '+form.addons.length+' add-on'+(form.addons.length>1?'s':'') : ''}
                   {' · subject to confirmation'}
                 </div>
               </>
@@ -281,7 +282,7 @@ function BookingForm({ onSubmit }) {
 function StaffInviteView({ booking, onRespond, currentStaff }) {
   const room = ROOMS.find(r=>r.id===booking.room)
   const myResp = booking.staffResponses[currentStaff.id]
-  const total = room ? room.rate * booking.hours : 0
+  const total = booking.priceRange || "POA"
   const dateStr = new Date(booking.date).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})
   return (
     <div style={{background:'#111',border:'1px solid #222',borderRadius:14,padding:28,maxWidth:540,margin:'0 auto'}}>
@@ -294,7 +295,7 @@ function StaffInviteView({ booking, onRespond, currentStaff }) {
         <Badge status={booking.status} />
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:20}}>
-        {[['Room',room?.label],['Service',booking.service],['Date',dateStr],['Time',`${booking.startTime} · ${booking.hours}hr`],['Fee',`£${total.toLocaleString()}`],['Received',new Date(booking.createdAt).toLocaleDateString('en-GB')]].map(([k,v])=>(
+        {[['Room',room?.label],['Service',booking.service],['Date',dateStr],['Time',`${booking.startTime} · ${booking.hours}hr`],['Fee', typeof total === 'number' ? '£'+total.toLocaleString() : total],['Received',new Date(booking.createdAt).toLocaleDateString('en-GB')]].map(([k,v])=>(
           <div key={k} style={{background:'#0D0D0D',borderRadius:8,padding:'10px 14px'}}>
             <div style={{fontSize:10,color:'#666',fontFamily:'DM Mono, monospace',textTransform:'uppercase',marginBottom:3}}>{k}</div>
             <div style={{fontSize:13,color:'#F0EDE8',fontWeight:600}}>{v}</div>
@@ -356,7 +357,7 @@ function Dashboard({ bookings, onRespond, onCancel, viewAs }) {
                       <span style={{fontSize:11,color:'#555',fontFamily:'DM Mono, monospace'}}>#{b.id}</span>
                     </div>
                     <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
-                      {[room?.label,b.service,new Date(b.date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),`${b.startTime} · ${b.hours}hr`,`£${(room?.rate*b.hours).toLocaleString()}`].map((item,i)=><span key={i} style={{fontSize:12,color:'#888'}}>{item}</span>)}
+                      {[room?.label,b.service,new Date(b.date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),`${b.startTime} · ${b.hours}hr`,b.priceRange || "POA"].map((item,i)=><span key={i} style={{fontSize:12,color:'#888'}}>{item}</span>)}
                     </div>
                     <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
                       {Object.entries(b.staffResponses||{}).map(([sid,resp])=>{const s=STAFF.find(x=>x.id===sid);return <span key={sid} style={{fontSize:11,color:resp==='accepted'?'#4CAF50':resp==='declined'?'#EF5350':'#555',fontFamily:'DM Mono, monospace'}}>{s?.name}: {resp}</span>;})}
