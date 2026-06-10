@@ -46,23 +46,18 @@ export function calcPrice(room, hireType, hours, addons = [], offPeak = false) {
   const rates = RATES[room]
   if (!rates) return null
 
-  let base
-  if (room === 'both') {
-    // Day rate regardless of hours
-    base = rates[hireType]
-  } else {
-    base = rates[hireType] * hours
-  }
+  const baseRate = rates[hireType]
+  if (baseRate == null) return null
 
-  if (!base) return null
+  let base = room === 'both' ? baseRate : baseRate * hours
 
   // Off-peak discount
   if (offPeak) base = Math.round(base * (1 - OFF_PEAK_DISCOUNT))
 
-  // Add-ons
+  // Add-ons (hourly)
   addons.forEach(id => {
     const addon = ADDONS.find(a => a.id === id)
-    if (addon?.rate) base += addon.rate * hours
+    if (addon && addon.rate != null) base += addon.rate * hours
   })
 
   return base
