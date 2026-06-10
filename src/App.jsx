@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { STAFF, ROOMS, SERVICES, genId, genToken } from './data.js'
+import { STAFF, ROOMS, HIRE_TYPES, SERVICES, ADDONS, PRICING, calcPrice, genId, genToken } from './data.js'
 import { loadBookings, createBooking, updateBooking } from './storage.js'
 
 // Staff PIN — change this to whatever you want
@@ -94,53 +94,144 @@ function PinGate({ onUnlock }) {
   )
 }
 
-// ─── Booking Form (Public) ─────────────────────────────────────────────────
+// ─── Booking Form ─────────────────────────────────────────────────────────
 function BookingForm({ onSubmit }) {
-  const [form, setForm] = useState({clientName:'',clientEmail:'',clientPhone:'',room:'a',service:'Recording Session',date:'',startTime:'10:00',hours:4,notes:'',staffNeeded:['blaze']})
+  const [form, setForm] = useState({
+    clientName:'', clientEmail:'', clientPhone:'',
+    room:'a', hireType:'dry', service:'Recording Session',
+    date:'', startTime:'10:00', hours:4,
+    notes:'', staffNeeded:['blaze'],
+    addons:[], offPeak:false,
+  })
   const [submitting, setSubmitting] = useState(false)
-  const room = ROOMS.find(r => r.id === form.room)
-  const total = room ? room.rate * form.hours : 0
+  const hireTypes = HIRE_TYPES[form.room] || []
+  const price = calcPrice(form.room, form.hireType, form.hours, form.addons, form.offPeak)
+
+  // Reset hire type when room changes
+  function setRoom(r) {
+    const types = HIRE_TYPES[r]
+    const hireType = types[0].id
+    setForm(f => ({...f, room:r, hireType}))
+  }
 
   function toggleStaff(id) {
     setForm(f => ({...f, staffNeeded: f.staffNeeded.includes(id) ? f.staffNeeded.filter(s=>s!==id) : [...f.staffNeeded,id]}))
+  }
+
+  function toggleAddon(id) {
+    setForm(f => ({...f, addons: f.addons.includes(id) ? f.addons.filter(a=>a!==id) : [...f.addons,id]}))
   }
 
   async function handleSubmit() {
     if (!form.clientName||!form.clientEmail||!form.date) return
     setSubmitting(true)
     const tokens = form.staffNeeded.reduce((acc,id)=>({...acc,[id]:genToken()}),{})
-    const booking = {...form,id:genId(),status:'pending',createdAt:new Date().toISOString(),staffResponses:form.staffNeeded.reduce((acc,id)=>({...acc,[id]:'pending'}),{}),tokens}
+    const booking = {
+      ...form, id:genId(), status:'pending',
+      createdAt:new Date().toISOString(),
+      staffResponses:form.staffNeeded.reduce((acc,id)=>({...acc,[id]:'pending'}),{}),
+      tokens,
+      priceRange: price ? (price.same ? `£${price.min}` : `£${price.min}–£${price.max}`) : 'POA',
+    }
     await onSubmit(booking)
     setSubmitting(false)
   }
 
+  const isValid = form.clientName && form.clientEmail && form.date
+
   return (
-    <div style={{maxWidth:640,margin:'0 auto'}}>
+    <div style={{maxWidth:660,margin:'0 auto'}}>
       <p style={{color:'#888',fontSize:14,margin:'0 0 28px'}}>Fill in your details and the team will be notified. You'll receive confirmation once accepted.</p>
-      <div style={{display:'grid',gap:20}}>
+      <div style={{display:'grid',gap:22}}>
+
+        {/* Contact */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
           <div><span style={LBL}>Your Name *</span><input style={INP} value={form.clientName} onChange={e=>setForm(f=>({...f,clientName:e.target.value}))} placeholder="Full name" /></div>
           <div><span style={LBL}>Phone</span><input style={INP} value={form.clientPhone} onChange={e=>setForm(f=>({...f,clientPhone:e.target.value}))} placeholder="+44..." /></div>
         </div>
         <div><span style={LBL}>Email *</span><input style={INP} type="email" value={form.clientEmail} onChange={e=>setForm(f=>({...f,clientEmail:e.target.value}))} placeholder="your@email.com" /></div>
+
+        {/* Room */}
         <div>
           <span style={LBL}>Studio Room *</span>
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
             {ROOMS.map(r=>(
-              <div key={r.id} onClick={()=>setForm(f=>({...f,room:r.id}))} style={{padding:'14px 12px',borderRadius:10,cursor:'pointer',border:form.room===r.id?'1.5px solid #C8A96E':'1px solid #2a2a2a',background:form.room===r.id?'rgba(200,169,110,0.08)':'#111',transition:'all 0.15s'}}>
+              <div key={r.id} onClick={()=>setRoom(r.id)} style={{padding:'14px 12px',borderRadius:10,cursor:'pointer',border:form.room===r.id?'1.5px solid #C8A96E':'1px solid #2a2a2a',background:form.room===r.id?'rgba(200,169,110,0.08)':'#111',transition:'all 0.15s'}}>
                 <div style={{fontWeight:700,fontSize:13,color:form.room===r.id?'#C8A96E':'#F0EDE8'}}>{r.label}</div>
                 <div style={{fontSize:11,color:'#666',marginTop:4,lineHeight:1.4}}>{r.desc}</div>
-                <div style={{fontSize:13,color:'#C8A96E',marginTop:8,fontWeight:600,fontFamily:'DM Mono, monospace'}}>£{r.rate}/hr</div>
               </div>
             ))}
           </div>
         </div>
-        <div><span style={LBL}>Service *</span><select style={{...INP,appearance:'none'}} value={form.service} onChange={e=>setForm(f=>({...f,service:e.target.value}))}>{SERVICES.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+
+        {/* Hire Type */}
+        <div>
+          <span style={LBL}>Hire Type *</span>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+            {hireTypes.map(h=>{
+              const p = PRICING[form.room]?.[h.id]
+              const rateStr = p?.hourly ? `£${p.hourly[0]}–£${p.hourly[1]}/hr` : p?.fullDay ? `£${p.fullDay[0]}${p.fullDay[1]!==p.fullDay[0]?'–£'+p.fullDay[1]:''}/day` : ''
+              return (
+                <div key={h.id} onClick={()=>setForm(f=>({...f,hireType:h.id}))} style={{flex:1,minWidth:120,padding:'12px 16px',borderRadius:10,cursor:'pointer',border:form.hireType===h.id?'1.5px solid #C8A96E':'1px solid #2a2a2a',background:form.hireType===h.id?'rgba(200,169,110,0.08)':'#111',transition:'all 0.15s'}}>
+                  <div style={{fontWeight:700,fontSize:13,color:form.hireType===h.id?'#C8A96E':'#F0EDE8'}}>{h.label}</div>
+                  <div style={{fontSize:11,color:'#666',marginTop:2}}>{h.desc}</div>
+                  {rateStr && <div style={{fontSize:12,color:'#C8A96E',marginTop:6,fontWeight:600,fontFamily:'DM Mono, monospace'}}>{rateStr}</div>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Service */}
+        <div><span style={LBL}>Service *</span>
+          <select style={{...INP,appearance:'none'}} value={form.service} onChange={e=>setForm(f=>({...f,service:e.target.value}))}>
+            {SERVICES.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        {/* Date + Time + Duration */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16}}>
           <div><span style={LBL}>Date *</span><input style={INP} type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} min={new Date().toISOString().split('T')[0]} /></div>
           <div><span style={LBL}>Start Time</span><input style={INP} type="time" value={form.startTime} onChange={e=>setForm(f=>({...f,startTime:e.target.value}))} /></div>
-          <div><span style={LBL}>Duration</span><select style={{...INP,appearance:'none'}} value={form.hours} onChange={e=>setForm(f=>({...f,hours:Number(e.target.value)}))}>{[1,2,3,4,5,6,7,8,10,12].map(h=><option key={h} value={h}>{h}hr{h>1?'s':''}</option>)}</select></div>
+          <div><span style={LBL}>Duration</span>
+            <select style={{...INP,appearance:'none'}} value={form.hours} onChange={e=>setForm(f=>({...f,hours:Number(e.target.value)}))}>
+              {[2,3,4,5,6,7,8,10].map(h=><option key={h} value={h}>{h===5?'5hrs (Half Day)':h===10?'10hrs (Full Day)':`${h}hrs`}</option>)}
+            </select>
+          </div>
         </div>
+
+        {/* Off-peak toggle */}
+        <label style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',padding:'12px 16px',background:'#111',borderRadius:8,border:'1px solid #1e1e1e'}}>
+          <div onClick={()=>setForm(f=>({...f,offPeak:!f.offPeak}))} style={{width:36,height:20,borderRadius:10,position:'relative',flexShrink:0,background:form.offPeak?'#C8A96E':'#2a2a2a',transition:'background 0.2s',cursor:'pointer'}}>
+            <div style={{position:'absolute',top:3,left:form.offPeak?19:3,width:14,height:14,borderRadius:'50%',background:'#fff',transition:'left 0.2s'}} />
+          </div>
+          <div>
+            <div style={{fontSize:13,color:'#ccc',fontWeight:600}}>Off-Peak Rate</div>
+            <div style={{fontSize:11,color:'#666',marginTop:1}}>Mon–Thu before 4PM · 10–15% discount applied</div>
+          </div>
+        </label>
+
+        {/* Add-ons */}
+        <div>
+          <span style={LBL}>Add-ons</span>
+          <div style={{display:'grid',gap:8}}>
+            {ADDONS.map(a=>(
+              <label key={a.id} onClick={()=>toggleAddon(a.id)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',padding:'10px 14px',background:'#111',borderRadius:8,border:`1px solid ${form.addons.includes(a.id)?'rgba(200,169,110,0.4)':'#1e1e1e'}`,transition:'border-color 0.15s'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${form.addons.includes(a.id)?'#C8A96E':'#444'}`,background:form.addons.includes(a.id)?'#C8A96E':'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all 0.15s'}}>
+                    {form.addons.includes(a.id)&&<span style={{color:'#0D0D0D',fontSize:11,fontWeight:900}}>✓</span>}
+                  </div>
+                  <span style={{fontSize:13,color:'#ccc'}}>{a.label}</span>
+                </div>
+                <span style={{fontSize:12,color:'#C8A96E',fontFamily:'DM Mono, monospace',fontWeight:600}}>
+                  {a.rate ? `£${a.rate[0]}–£${a.rate[1]}${a.unit}` : a.unit}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Staff */}
         <div>
           <span style={LBL}>Request Staff</span>
           <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
@@ -152,20 +243,40 @@ function BookingForm({ onSubmit }) {
             ))}
           </div>
         </div>
-        <div><span style={LBL}>Project Notes</span><textarea style={{...INP,height:80,resize:'vertical'}} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Artist name, genre, what you're working on..." /></div>
+
+        {/* Notes */}
+        <div><span style={LBL}>Project Notes</span>
+          <textarea style={{...INP,height:80,resize:'vertical'}} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Artist name, genre, what you're working on..." />
+        </div>
+
+        {/* Price summary + Submit */}
         <div style={{borderTop:'1px solid #1e1e1e',paddingTop:20,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16}}>
           <div>
             <div style={{fontSize:11,color:'#888',fontFamily:'DM Mono, monospace',letterSpacing:'0.06em',textTransform:'uppercase'}}>Estimated Total</div>
-            <div style={{fontSize:28,fontWeight:700,color:'#C8A96E',marginTop:2}}>£{total.toLocaleString()}</div>
-            <div style={{fontSize:11,color:'#666'}}>{form.hours}hr × £{room?.rate}/hr · subject to confirmation</div>
+            {price ? (
+              <>
+                <div style={{fontSize:28,fontWeight:700,color:'#C8A96E',marginTop:2}}>
+                  {price.same ? `£${price.min.toLocaleString()}` : `£${price.min.toLocaleString()}–£${price.max.toLocaleString()}`}
+                </div>
+                <div style={{fontSize:11,color:'#666',marginTop:2}}>
+                  {form.hours}hr{form.hours>1?'s':''} · {hireTypes.find(h=>h.id===form.hireType)?.label}
+                  {form.offPeak?' · off-peak rate':''}
+                  {form.addons.length>0?` · ${form.addons.length} add-on${form.addons.length>1?'s':''}`:''}
+                  {' · subject to confirmation'}
+                </div>
+              </>
+            ) : (
+              <div style={{fontSize:20,fontWeight:700,color:'#C8A96E',marginTop:2}}>POA</div>
+            )}
+            <div style={{fontSize:11,color:'#555',marginTop:4}}>Deposit required to confirm · rates may vary</div>
           </div>
-          <button onClick={handleSubmit} disabled={submitting||!form.clientName||!form.clientEmail||!form.date} style={{padding:'14px 32px',borderRadius:10,border:'none',cursor:'pointer',background:(!form.clientName||!form.clientEmail||!form.date)?'#2a2a2a':'#C8A96E',color:(!form.clientName||!form.clientEmail||!form.date)?'#555':'#0D0D0D',fontWeight:700,fontSize:15,transition:'all 0.15s'}}>{submitting?'Sending…':'Send Booking Request →'}</button>
+          <button onClick={handleSubmit} disabled={submitting||!isValid} style={{padding:'14px 32px',borderRadius:10,border:'none',cursor:isValid?'pointer':'default',background:!isValid?'#2a2a2a':'#C8A96E',color:!isValid?'#555':'#0D0D0D',fontWeight:700,fontSize:15,transition:'all 0.15s'}}>{submitting?'Sending…':'Send Booking Request →'}</button>
         </div>
+
       </div>
     </div>
   )
 }
-
 // ─── Staff Invite Card ─────────────────────────────────────────────────────
 function StaffInviteView({ booking, onRespond, currentStaff }) {
   const room = ROOMS.find(r=>r.id===booking.room)
