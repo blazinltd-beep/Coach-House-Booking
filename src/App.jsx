@@ -224,7 +224,7 @@ function BookingForm({ onSubmit }) {
                   <span style={{fontSize:13,color:'#ccc'}}>{a.label}</span>
                 </div>
                 <span style={{fontSize:12,color:'#C8A96E',fontFamily:'DM Mono, monospace',fontWeight:600}}>
-                  {a.rate ? `£${a.rate[0]}–£${a.rate[1]}${a.unit}` : a.unit}
+                  {a.rate ? '£'+a.rate+a.unit : a.unit}
                 </span>
               </label>
             ))}
