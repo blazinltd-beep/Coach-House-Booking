@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { STAFF, ROOMS, HIRE_TYPES, SERVICES, ADDONS, PRICING, calcPrice, genId, genToken } from './data.js'
+import { STAFF, ROOMS, HIRE_TYPES, SERVICES, ADDONS, RATES, OFF_PEAK_DISCOUNT, calcPrice, genId, genToken } from './data.js'
 import { loadBookings, createBooking, updateBooking } from './storage.js'
 
 // Staff PIN — change this to whatever you want
@@ -131,7 +131,7 @@ function BookingForm({ onSubmit }) {
       createdAt:new Date().toISOString(),
       staffResponses:form.staffNeeded.reduce((acc,id)=>({...acc,[id]:'pending'}),{}),
       tokens,
-      priceRange: price ? (price.same ? `£${price.min}` : `£${price.min}–£${price.max}`) : 'POA',
+      priceRange: price ? `£${price.toLocaleString()}${form.offPeak?' (off-peak)':''}` : 'POA',
     }
     await onSubmit(booking)
     setSubmitting(false)
@@ -169,8 +169,8 @@ function BookingForm({ onSubmit }) {
           <span style={LBL}>Hire Type *</span>
           <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
             {hireTypes.map(h=>{
-              const p = PRICING[form.room]?.[h.id]
-              const rateStr = p?.hourly ? `£${p.hourly[0]}–£${p.hourly[1]}/hr` : p?.fullDay ? `£${p.fullDay[0]}${p.fullDay[1]!==p.fullDay[0]?'–£'+p.fullDay[1]:''}/day` : ''
+              const r = RATES[form.room]?.[h.id]
+              const rateStr = r ? (form.room === 'both' ? `£${r.toLocaleString()}/day` : `£${r}/hr`) : ''
               return (
                 <div key={h.id} onClick={()=>setForm(f=>({...f,hireType:h.id}))} style={{flex:1,minWidth:120,padding:'12px 16px',borderRadius:10,cursor:'pointer',border:form.hireType===h.id?'1.5px solid #C8A96E':'1px solid #2a2a2a',background:form.hireType===h.id?'rgba(200,169,110,0.08)':'#111',transition:'all 0.15s'}}>
                   <div style={{fontWeight:700,fontSize:13,color:form.hireType===h.id?'#C8A96E':'#F0EDE8'}}>{h.label}</div>
